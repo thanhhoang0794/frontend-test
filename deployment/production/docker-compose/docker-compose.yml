@@ -1,0 +1,15 @@
+version: '3'
+
+networks:
+  <network-name>:
+    driver: bridge
+
+services:
+  vdes-application:
+    container_name: <container-name>
+    image: <container-image>
+    ports:
+      - '3000:3000'
+    networks:
+      - <network-name>
+    restart: on-failure:10

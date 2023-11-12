@@ -1,0 +1,13 @@
+/* React Select Component */
+.react-dropdown-select {
+  border-radius: 8px !important;
+  min-height: 40px !important;
+}
+
+.react-dropdown-select-dropdown {
+  width: 100% !important;
+}
+
+.allocation-map-wrapper {
+  height: 478px;
+}

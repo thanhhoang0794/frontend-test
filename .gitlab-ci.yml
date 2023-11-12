@@ -1,0 +1,121 @@
+stages:
+  - testing
+  - build-development
+  - deploy-development
+  - build-staging
+  - deploy-staging
+  - build-production
+  - deploy-production
+
+step-testing:
+  image: zymethyang/ubuntu
+  stage: testing
+  script:
+    - docker build -t $CI_REGISTRY:dev .
+  only:
+    - merge_requests
+
+step-build-development:
+  image: zymethyang/ubuntu
+  stage: build-development
+  script:
+    - docker build -t $CI_REGISTRY:dev .
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker push $CI_REGISTRY:dev
+  only:
+    - develop
+
+step-deploy-development:
+  image: zymethyang/ubuntu
+  stage: deploy-development
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    DOCKER_TLS_CERTDIR: ''
+
+  before_script:
+    - mkdir -p /root/.ssh/
+    - echo "$PRIVATE_SSH_KEY_DEV" > "/root/.ssh/id_rsa"
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+  script:
+    - DOCKER_HOST=ssh://root@"$SERVER_IP_DEV" docker-compose -f ./deployment/development/docker-compose/docker-compose.yml pull
+    - DOCKER_HOST=ssh://root@"$SERVER_IP_DEV" docker-compose -f ./deployment/development/docker-compose/docker-compose.yml up -d --force-recreate
+    - docker rmi -f $CI_REGISTRY:dev
+  only:
+    - develop
+
+step-build-staging:
+  image: zymethyang/ubuntu
+  stage: build-staging
+
+  before_script:
+    - mkdir -p ~/.aws
+    - echo "[default]" > ~/.aws/credentials
+    - echo "aws_access_key_id=$AWS_ACCESS_KEY_ID" >> ~/.aws/credentials
+    - echo "aws_secret_access_key=$AWS_SECRET_ACCESS_KEY" >> ~/.aws/credentials
+
+    - echo "[default]" > ~/.aws/config
+    - echo "region=ap-southeast-1" >> ~/.aws/config
+    - aws s3 cp s3://<s3-file-name> .env
+  script:
+    - docker build -t $CI_REGISTRY:stag .
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker push $CI_REGISTRY:stag
+  only:
+    - staging
+
+step-deploy-staging:
+  image: zymethyang/ubuntu
+  stage: deploy-staging
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    DOCKER_TLS_CERTDIR: ''
+
+  before_script:
+    - mkdir -p /root/.ssh/
+    - echo "$PRIVATE_SSH_KEY_STAG" > "/root/.ssh/id_rsa"
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+  script:
+    - DOCKER_HOST=ssh://root@"$SERVER_IP_STAG" docker-compose -f ./deployment/staging/docker-compose/docker-compose.yml pull
+    - DOCKER_HOST=ssh://root@"$SERVER_IP_STAG" docker-compose -f ./deployment/staging/docker-compose/docker-compose.yml up -d --force-recreate
+    - docker rmi -f $CI_REGISTRY:stag
+  only:
+    - staging
+
+step-build-production:
+  image: zymethyang/ubuntu
+  stage: build-production
+
+  before_script:
+    - mkdir -p ~/.aws
+    - echo "[default]" > ~/.aws/credentials
+    - echo "aws_access_key_id=$AWS_ACCESS_KEY_ID" >> ~/.aws/credentials
+    - echo "aws_secret_access_key=$AWS_SECRET_ACCESS_KEY" >> ~/.aws/credentials
+
+    - echo "[default]" > ~/.aws/config
+    - echo "region=ap-southeast-1" >> ~/.aws/config
+    - aws s3 cp s3://<s3-file-name> .env
+
+  script:
+    - docker build -t $CI_REGISTRY:prod .
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+    - docker push $CI_REGISTRY:prod
+  only:
+    - /^release-.*$/
+
+step-deploy-production:
+  image: zymethyang/ubuntu
+  stage: deploy-production
+  variables:
+    DOCKER_HOST: unix:///var/run/docker.sock
+    DOCKER_TLS_CERTDIR: ''
+
+  before_script:
+    - mkdir -p /root/.ssh/
+    - echo "$PRIVATE_SSH_KEY_PROD" > "/root/.ssh/id_rsa"
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER $CI_REGISTRY --password-stdin
+  script:
+    - DOCKER_HOST=ssh://root@$SERVER_IP_PROD docker-compose -f ./deployment/production/docker-compose/docker-compose.yml pull
+    - DOCKER_HOST=ssh://root@$SERVER_IP_PROD docker-compose -f ./deployment/production/docker-compose/docker-compose.yml up -d --force-recreate
+    - docker rmi -f $CI_REGISTRY:prod
+  only:
+    - /^release-.*$/
